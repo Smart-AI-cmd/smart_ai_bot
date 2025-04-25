@@ -1,41 +1,62 @@
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import os
+import openai
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# Токены
+BOT_TOKEN = "7560643091:AAGznh89E8LfHMkhP7mM15__9tbNXU9BF2Y"
+OPENAI_API_KEY = "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"
 
-script = {
-    "1_первичное_касание": "Привет! 👋 Я Smart_AI ассистент.\nПомогаю автоматизировать рутину и зарабатывать через ИИ.\nВыбери, что хочешь сделать:",
-    "2_прогрев": "С чем ты чаще сталкиваешься в продвижении?\n✅ Мало контента?\n✅ Нужен системный подход?\n✅ Хочешь, чтобы за тебя подумали?",
-    "3_оффер": "У меня есть система Smart_AI. За 3 дня ты запустишь продукт и сможешь зарабатывать 100–500$/день. Скинуть старт-пак?",
-    "7_закрытие_лидмагнит": "Кидаю тебе PDF с инструкцией. Откроешь — увидишь, как легко стартануть.",
-    "8_закрытие_оплата": "Хочешь сразу оплатить участие и получить персонального ассистента? Готов скинуть ссылку."
-}
+openai.api_key = OPENAI_API_KEY
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("Получить PDF", callback_data="get_pdf")],
-        [InlineKeyboardButton("Прогрев", callback_data="warmup")],
-        [InlineKeyboardButton("Оффер", callback_data="offer")],
-        [InlineKeyboardButton("Оплата", callback_data="pay")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(script["1_первичное_касание"], reply_markup=reply_markup)
+# Инициализация памяти и роли
+user_memory = {}
+default_role = "Ты дружелюбный AI-помощник, который даёт полезные советы."
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data == "get_pdf":
-        await query.edit_message_text(text=script["7_закрытие_лидмагнит"])
-    elif query.data == "warmup":
-        await query.edit_message_text(text=script["2_прогрев"])
-    elif query.data == "offer":
-        await query.edit_message_text(text=script["3_оффер"])
-    elif query.data == "pay":
-        await query.edit_message_text(text=script["8_закрытие_оплата"])
+# Функция смены роли
+async def setrole(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    role_text = " ".join(context.args)
+    if role_text:
+        user_memory[user_id] = {"role": role_text, "history": []}
+        await update.message.reply_text(f"✅ Роль установлена: {role_text}")
+    else:
+        await update.message.reply_text("Пожалуйста, укажи роль. Пример:
+/setrole Ты маркетолог, который помогает писать офферы.")
 
+# Основной чат
+async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    user_input = update.message.text
+
+    if user_id not in user_memory:
+        user_memory[user_id] = {"role": default_role, "history": []}
+
+    memory = user_memory[user_id]["history"]
+    role = user_memory[user_id]["role"]
+
+    # Формируем запрос с памятью
+    messages = [{"role": "system", "content": role}]
+    for msg in memory[-5:]:  # последние 5 сообщений
+        messages.append(msg)
+    messages.append({"role": "user", "content": user_input})
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=messages
+    )
+
+    reply = response.choices[0].message.content
+
+    # Сохраняем диалог
+    user_memory[user_id]["history"].append({"role": "user", "content": user_input})
+    user_memory[user_id]["history"].append({"role": "assistant", "content": reply})
+
+    await update.message.reply_text(reply)
+
+# Запуск бота
 app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(button_handler))
+app.add_handler(CommandHandler("setrole", setrole))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat))
 app.run_polling()

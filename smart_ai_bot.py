@@ -22,8 +22,9 @@ async def setrole(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_memory[user_id] = {"role": role_text, "history": []}
         await update.message.reply_text(f"✅ Роль установлена: {role_text}")
     else:
-        await update.message.reply_text("Пожалуйста, укажи роль. Пример:
-/setrole Ты маркетолог, который помогает писать офферы.")
+        await update.message.reply_text("Пожалуйста, укажи роль. Пример:\n/setrole Ты маркетолог, который помогает писать офферы.")
+
+
 
 # Основной чат
 async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
